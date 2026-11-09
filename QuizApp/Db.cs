@@ -120,13 +120,16 @@ namespace QuizApp
             AddUser("Test Student", "student", "student@quiz.com", "Student@123", "Student");
 
             Quiz csharp = AddQuiz("C# Basics", "Variables, loops and classes", 10, true);
-            AddQuestion(csharp, "Which keyword makes a constant in C#?", 0, 2, "const", "static", "final", "fixed");
-            AddQuestion(csharp, "Which loop runs at least once?", 2, 2, "for", "while", "do-while", "foreach");
-            AddQuestion(csharp, "What is 7 / 2 for two ints?", 1, 1, "3.5", "3", "4", "2");
+            AddChoice(csharp, "Which keyword makes a constant in C#?", 0, 2, "const", "static", "final", "fixed");
+            AddChoice(csharp, "Which loop runs at least once?", 2, 2, "for", "while", "do-while", "foreach");
+            AddTrueFalse(csharp, "In C# a string cannot be changed after it is created.", true, 1);
+            AddShort(csharp, "Which keyword creates a new object?", "new", 1);
+            AddMulti(csharp, "Which of these are loops in C#?", "ACD", 2, "for", "if", "while", "foreach");
 
             Quiz oop = AddQuiz("OOP Concepts", "Encapsulation, inheritance, polymorphism", 8, true);
-            AddQuestion(oop, "Hiding data inside a class is called?", 0, 2, "Encapsulation", "Inheritance", "Polymorphism", "Overloading");
-            AddQuestion(oop, "A class that gets members from another class uses?", 1, 2, "Interfaces only", "Inheritance", "Static", "Delegates");
+            AddChoice(oop, "Hiding data inside a class is called?", 0, 2, "Encapsulation", "Inheritance", "Polymorphism", "Overloading");
+            AddTrueFalse(oop, "A class can inherit from two classes in C#.", false, 1);
+            AddShort(oop, "What is the word for 'many forms' in OOP?", "polymorphism", 2);
 
             AddQuiz("Databases (draft)", "Not ready yet - hidden from students", 12, false);
         }
@@ -143,9 +146,30 @@ namespace QuizApp
             return q;
         }
 
-        static void AddQuestion(Quiz quiz, string text, int correct, int marks, params string[] options)
+        static void AddQuestion(Quiz quiz, string type, string text, int correct, string answer, int marks, params string[] options)
         {
-            All.Questions.Add(new Question { Id = NewId(), QuizId = quiz.Id, Text = text, Correct = correct, Marks = marks, Options = new List<string>(options) });
+            All.Questions.Add(new Question { Id = NewId(), QuizId = quiz.Id, Type = type, Text = text, Correct = correct,
+                                             Answer = answer, Marks = marks, Options = new List<string>(options) });
+        }
+
+        static void AddChoice(Quiz q, string text, int correct, int marks, params string[] options)
+        {
+            AddQuestion(q, Question.Types[0], text, correct, null, marks, options);
+        }
+
+        static void AddTrueFalse(Quiz q, string text, bool isTrue, int marks)
+        {
+            AddQuestion(q, Question.Types[1], text, isTrue ? 0 : 1, null, marks, "True", "False");
+        }
+
+        static void AddShort(Quiz q, string text, string answer, int marks)
+        {
+            AddQuestion(q, Question.Types[2], text, 0, answer, marks);
+        }
+
+        static void AddMulti(Quiz q, string text, string letters, int marks, params string[] options)
+        {
+            AddQuestion(q, Question.Types[3], text, 0, letters, marks, options);
         }
     }
 }

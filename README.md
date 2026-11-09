@@ -16,11 +16,20 @@ University project - Modern Development (CS312). A small quiz program written in
 
 - Login (username or email, remember me) and registration
 - Dashboard with quiz counts and recent results
-- Admin: add / edit / delete quizzes, questions and users, see reports, export results to CSV
+- Admin: add / edit / delete quizzes, questions (4 types) and users, see reports, export results to CSV
 - Student: take quizzes with a countdown timer, see score, pass/fail and correct/wrong answers
 - Settings: profile, change password, logout
 
 Admin also works as the teacher. New registered accounts are Students; an admin can create other admins.
+
+## Question types
+
+| Type | How the student answers | How it is marked |
+|---|---|---|
+| Multiple choice | pick one of 4 answers | the picked answer must be the right one |
+| True / False | pick True or False | must match |
+| Short answer | types the answer | must match one of the accepted answers (not case sensitive) |
+| Multiple answers | ticks all the right answers | the ticked set must be exactly the right set |
 
 ## Local mode and online mode
 
@@ -34,6 +43,7 @@ Admin also works as the teacher. New registered accounts are Students; an admin 
 3. Press F5
 
 Demo accounts: `admin / Admin@123` and `student / Student@123`.
+If you used an older version, delete the old `quizdata.json` first so the new sample questions are created.
 To reset the data, close the program and delete `quizdata.json` in `bin/Debug/net8.0-windows/`.
 
 ## Files
@@ -54,6 +64,6 @@ Add them in a `screenshots` folder after running the program.
 
 ## Limits
 
-- Only multiple choice questions (4 answers each)
+- No essay questions yet (they need a teacher to mark them by hand)
 - Pass mark is fixed at 50%
 - Password uses a simple SHA-256 hash with a fixed text added (a real system should use a salt per user)

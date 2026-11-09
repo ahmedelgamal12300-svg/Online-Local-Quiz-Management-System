@@ -22,10 +22,13 @@ namespace QuizApp
         TextBox quizSearch, titleBox, descBox, minutesBox;
         CheckBox availableBox;
         // questions
-        ComboBox quizPicker, correctBox;
+        ComboBox quizPicker, typeBox, correctBox;
         ListView questionList;
-        TextBox questionBox;
+        TextBox questionBox, shortAnswerBox;
         TextBox[] optionBoxes = new TextBox[4];
+        CheckBox[] rightChecks = new CheckBox[4];
+        Label[] optionLabels = new Label[4];
+        Label correctLabel, shortLabel;
         NumericUpDown marksBox;
         // results, users, reports
         ListView resultList, userList, reportList, studentList;
@@ -214,30 +217,41 @@ namespace QuizApp
         void BuildQuestions()
         {
             var page = AddTab("Questions");
-            questionList = UI.MakeList("Question", "Correct answer", "Marks");
-            questionList.Columns[0].Width = 450;
+            questionList = UI.MakeList("Question", "Type", "Correct answer", "Marks");
+            questionList.Columns[0].Width = 380;
+            questionList.Columns[2].Width = 200;
 
             var top = new Panel { Dock = DockStyle.Top, Height = 45 };
             quizPicker = new ComboBox { Left = 75, Top = 8, Width = 280, DropDownStyle = ComboBoxStyle.DropDownList };
             quizPicker.SelectedIndexChanged += (s, e) => FillQuestions();
             top.Controls.AddRange(new Control[] { UI.MakeLabel("Quiz:", 10, 11), quizPicker });
 
-            var edit = new Panel { Dock = DockStyle.Bottom, Height = 190 };
+            var edit = new Panel { Dock = DockStyle.Bottom, Height = 235 };
             questionBox = UI.MakeText(80, 10, 600);
-            edit.Controls.AddRange(new Control[] { UI.MakeLabel("Question", 10, 13), questionBox });
+            typeBox = new ComboBox { Left = 80, Top = 45, Width = 170, DropDownStyle = ComboBoxStyle.DropDownList };
+            typeBox.Items.AddRange(Question.Types);
+            typeBox.SelectedIndex = 0;
+            typeBox.SelectedIndexChanged += (s, e) => UpdateEditor();
+            marksBox = new NumericUpDown { Left = 330, Top = 45, Width = 60, Minimum = 1, Maximum = 50, Value = 1 };
+            edit.Controls.AddRange(new Control[] { UI.MakeLabel("Question", 10, 13), questionBox, UI.MakeLabel("Type", 10, 48), typeBox,
+                UI.MakeLabel("Marks", 270, 48), marksBox });
+
+            // the four answers (used by "Multiple choice" and "Multiple answers")
             for (int i = 0; i < 4; i++)
             {
-                optionBoxes[i] = UI.MakeText(80 + (i % 2) * 330, 45 + (i / 2) * 35, 300);
-                edit.Controls.Add(UI.MakeLabel("" + (char)('A' + i), 60 + (i % 2) * 330, 48 + (i / 2) * 35));
-                edit.Controls.Add(optionBoxes[i]);
+                int x = 80 + (i % 2) * 360, y = 85 + (i / 2) * 35;
+                optionLabels[i] = UI.MakeLabel("" + (char)('A' + i), x - 20, y + 3);
+                optionBoxes[i] = UI.MakeText(x, y, 240);
+                rightChecks[i] = new CheckBox { Text = "right", Left = x + 250, Top = y + 2, AutoSize = true };
+                edit.Controls.AddRange(new Control[] { optionLabels[i], optionBoxes[i], rightChecks[i] });
             }
-            correctBox = new ComboBox { Left = 120, Top = 118, Width = 60, DropDownStyle = ComboBoxStyle.DropDownList };
-            correctBox.Items.AddRange(new object[] { "A", "B", "C", "D" });
-            correctBox.SelectedIndex = 0;
-            marksBox = new NumericUpDown { Left = 300, Top = 118, Width = 60, Minimum = 1, Maximum = 50, Value = 1 };
-            edit.Controls.AddRange(new Control[] { UI.MakeLabel("Correct answer", 10, 121), correctBox, UI.MakeLabel("Marks", 240, 121), marksBox,
-                UI.MakeButton("Add", 10, 150, 90, (s, e) => SaveQuestion(true)), UI.MakeButton("Update", 110, 150, 90, (s, e) => SaveQuestion(false)),
-                UI.MakeButton("Delete", 210, 150, 90, (s, e) => DeleteQuestion()) });
+            correctLabel = UI.MakeLabel("Correct answer", 10, 160);
+            correctBox = new ComboBox { Left = 120, Top = 157, Width = 90, DropDownStyle = ComboBoxStyle.DropDownList };
+            shortLabel = UI.MakeLabel("Accepted answers (separate with | )", 10, 88);
+            shortAnswerBox = UI.MakeText(250, 85, 300);
+            edit.Controls.AddRange(new Control[] { correctLabel, correctBox, shortLabel, shortAnswerBox,
+                UI.MakeButton("Add", 10, 195, 90, (s, e) => SaveQuestion(true)), UI.MakeButton("Update", 110, 195, 90, (s, e) => SaveQuestion(false)),
+                UI.MakeButton("Delete", 210, 195, 90, (s, e) => DeleteQuestion()) });
 
             page.Controls.Add(questionList);
             page.Controls.Add(top);
@@ -247,11 +261,37 @@ namespace QuizApp
             {
                 Question q = UI.Selected<Question>(questionList);
                 if (q == null) return;
+                typeBox.SelectedItem = q.QuestionType;          // this also changes which controls are visible
                 questionBox.Text = q.Text;
-                for (int i = 0; i < 4; i++) optionBoxes[i].Text = q.Options[i];
-                correctBox.SelectedIndex = q.Correct;
                 marksBox.Value = q.Marks;
+                for (int i = 0; i < 4; i++)
+                {
+                    optionBoxes[i].Text = i < q.Options.Count ? q.Options[i] : "";
+                    rightChecks[i].Checked = q.QuestionType == "Multiple answers" && q.Answer.ToUpper().Contains((char)('A' + i));
+                }
+                shortAnswerBox.Text = q.QuestionType == "Short answer" ? q.Answer : "";
+                if (q.QuestionType == "Multiple choice" || q.QuestionType == "True / False") correctBox.SelectedIndex = q.Correct;
             };
+            UpdateEditor();
+        }
+
+        // show only the controls that this type of question needs
+        void UpdateEditor()
+        {
+            string type = typeBox.SelectedItem.ToString();
+            bool choices = (type == "Multiple choice" || type == "Multiple answers");
+            for (int i = 0; i < 4; i++)
+            {
+                optionLabels[i].Visible = optionBoxes[i].Visible = choices;
+                rightChecks[i].Visible = (type == "Multiple answers");
+            }
+            shortLabel.Visible = shortAnswerBox.Visible = (type == "Short answer");
+            correctLabel.Visible = correctBox.Visible = (type == "Multiple choice" || type == "True / False");
+
+            correctBox.Items.Clear();
+            if (type == "True / False") correctBox.Items.AddRange(new object[] { "True", "False" });
+            else correctBox.Items.AddRange(new object[] { "A", "B", "C", "D" });
+            correctBox.SelectedIndex = 0;
         }
 
         void FillQuizPicker()
@@ -273,7 +313,7 @@ namespace QuizApp
             Quiz quiz = PickedQuiz();
             if (quiz == null) return;
             foreach (Question q in Db.QuestionsOf(quiz.Id))
-                UI.AddRow(questionList, q, q.Text, (char)('A' + q.Correct) + ". " + q.Options[q.Correct], q.Marks.ToString());
+                UI.AddRow(questionList, q, q.Text, q.QuestionType, q.CorrectText(), q.Marks.ToString());
         }
 
         void SaveQuestion(bool isNew)
@@ -282,11 +322,36 @@ namespace QuizApp
             Question q = isNew ? new Question() : UI.Selected<Question>(questionList);
             if (quiz == null || q == null) { UI.Warn(isNew ? "Create a quiz first." : "Select a question first."); return; }
             if (questionBox.Text.Trim() == "") { UI.Warn("Please write the question."); return; }
-            if (optionBoxes.Any(b => b.Text.Trim() == "")) { UI.Warn("Please fill all 4 answers."); return; }
 
-            q.QuizId = quiz.Id; q.Text = questionBox.Text.Trim();
-            q.Options = optionBoxes.Select(b => b.Text.Trim()).ToList();
-            q.Correct = correctBox.SelectedIndex; q.Marks = (int)marksBox.Value;
+            string type = typeBox.SelectedItem.ToString();
+            var options = new System.Collections.Generic.List<string>();
+            int correct = 0;
+            string answer = null;
+
+            if (type == "True / False")
+            {
+                options.AddRange(new[] { "True", "False" });
+                correct = correctBox.SelectedIndex;
+            }
+            else if (type == "Short answer")
+            {
+                answer = shortAnswerBox.Text.Trim();
+                if (answer == "") { UI.Warn("Please write the accepted answer."); return; }
+            }
+            else
+            {
+                if (optionBoxes.Any(b => b.Text.Trim() == "")) { UI.Warn("Please fill all 4 answers."); return; }
+                options = optionBoxes.Select(b => b.Text.Trim()).ToList();
+                if (type == "Multiple choice") correct = correctBox.SelectedIndex;
+                else
+                {
+                    for (int i = 0; i < 4; i++) if (rightChecks[i].Checked) answer += (char)('A' + i);
+                    if (answer == null) { UI.Warn("Tick at least one right answer."); return; }
+                }
+            }
+
+            q.QuizId = quiz.Id; q.Text = questionBox.Text.Trim(); q.Type = type;
+            q.Options = options; q.Correct = correct; q.Answer = answer; q.Marks = (int)marksBox.Value;
             if (isNew) { q.Id = Db.NewId(); Db.All.Questions.Add(q); }
             Db.Save();
             FillQuestions();
