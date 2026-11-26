@@ -1,4 +1,6 @@
 using System;
+using System.ComponentModel;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -7,21 +9,20 @@ using System.Windows.Forms;
 
 namespace QuizApp
 {
-    // The main window: a menu on the left (tabs) and one page for each screen
     public class MainForm : Form
     {
         public bool LoggedOut = false;
-        bool isAdmin = Db.Me.Role == "Admin";
+        bool isTeacher = Db.Me != null && Db.Me.Role == "Teacher";
         TabControl tabs = new TabControl();
 
-        // dashboard
         Label welcomeLabel, statsLabel;
         ListBox recentBox;
-        // quizzes
         ListView quizList;
         TextBox quizSearch, titleBox, descBox, minutesBox;
+        ComboBox subjectBox;
+        CheckedListBox subjectList;
+        Label subjectStatus;
         CheckBox availableBox;
-        // questions
         ComboBox quizPicker, typeBox, correctBox;
         ListView questionList;
         TextBox questionBox, shortAnswerBox;
@@ -30,24 +31,28 @@ namespace QuizApp
         Label[] optionLabels = new Label[4];
         Label correctLabel, shortLabel;
         NumericUpDown marksBox;
-        // results, users, reports
         ListView resultList, userList, reportList, studentList;
         TextBox userSearch, nameBox, usernameBox, emailBox, passwordBox;
         ComboBox roleBox;
-        // settings
         TextBox oldPass, newPass, confirmPass;
         ComboBox modeBox;
 
         public MainForm()
         {
+            if (LicenseManager.UsageMode == LicenseUsageMode.Designtime)
+            {
+                BuildDesignerPreview();
+                return;
+            }
+
             Text = "Quiz Management System";
             ClientSize = new Size(1100, 680);
             MinimumSize = new Size(950, 600);
             StartPosition = FormStartPosition.CenterScreen;
+            BackColor = UI.Page;
             Font = new Font("Segoe UI", 10);
 
-            // blue bar at the top with the user name
-            var header = new Panel { Dock = DockStyle.Top, Height = 55, BackColor = UI.Blue };
+            var header = new Panel { Dock = DockStyle.Top, Height = 60, BackColor = UI.Navy };
             var appName = UI.MakeLabel("Quiz Management System", 15, 14);
             appName.Font = new Font("Segoe UI", 14, FontStyle.Bold);
             appName.ForeColor = Color.White;
@@ -58,11 +63,10 @@ namespace QuizApp
             header.Controls.Add(appName);
             header.Controls.Add(userName);
 
-            // tabs on the left side
             tabs.Dock = DockStyle.Fill;
             tabs.Alignment = TabAlignment.Left;
             tabs.SizeMode = TabSizeMode.Fixed;
-            tabs.ItemSize = new Size(42, 170);       // for left tabs the width and height are swapped
+            tabs.ItemSize = new Size(42, 170);
             tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
             tabs.DrawItem += DrawTab;
 
@@ -71,27 +75,61 @@ namespace QuizApp
 
             BuildDashboard();
             BuildQuizzes();
-            if (isAdmin) BuildQuestions();
+            if (isTeacher) BuildQuestions();
+            else BuildSubjects();
             BuildResults();
-            if (isAdmin) { BuildUsers(); BuildReports(); }
+            if (isTeacher) { BuildUsers(); BuildReports(); }
             BuildSettings();
+            if (!isTeacher && (Db.Me.Subjects == null || Db.Me.Subjects.Count == 0)) tabs.SelectedIndex = 2;
 
             tabs.SelectedIndexChanged += (s, e) => RefreshAll();
             RefreshAll();
+        }
+
+        void BuildDesignerPreview()
+        {
+            Text = "Quiz Management System";
+            ClientSize = new Size(1100, 680);
+            MinimumSize = new Size(950, 600);
+            StartPosition = FormStartPosition.CenterScreen;
+            Font = new Font("Segoe UI", 10);
+
+            var header = new Panel { Dock = DockStyle.Top, Height = 55, BackColor = UI.Blue };
+            var title = UI.MakeLabel("Quiz Management System", 15, 14);
+            title.Font = new Font("Segoe UI", 14, FontStyle.Bold);
+            title.ForeColor = Color.White;
+            header.Controls.Add(title);
+
+            tabs.Dock = DockStyle.Fill;
+            tabs.Alignment = TabAlignment.Left;
+            tabs.SizeMode = TabSizeMode.Fixed;
+            tabs.ItemSize = new Size(42, 170);
+            tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
+            tabs.DrawItem += DrawTab;
+
+            foreach (string name in new[] { "Dashboard", "Quizzes", "Questions", "Results", "Users", "Reports", "Settings" })
+            {
+                var page = AddTab(name);
+                page.Controls.Add(UI.MakeLabel(name + " preview", 25, 25));
+            }
+
+            Controls.Add(tabs);
+            Controls.Add(header);
         }
 
         void DrawTab(object sender, DrawItemEventArgs e)
         {
             bool selected = (e.Index == tabs.SelectedIndex);
             Rectangle r = tabs.GetTabRect(e.Index);
-            e.Graphics.FillRectangle(new SolidBrush(selected ? UI.Blue : Color.FromArgb(235, 238, 242)), r);
+            using (var brush = new SolidBrush(selected ? UI.Blue : UI.Page))
+                e.Graphics.FillRectangle(brush, r);
             TextRenderer.DrawText(e.Graphics, tabs.TabPages[e.Index].Text, Font, new Rectangle(r.X + 15, r.Y, r.Width - 15, r.Height),
-                selected ? Color.White : Color.Black, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                selected ? Color.White : UI.Navy, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
         }
 
         TabPage AddTab(string title)
         {
-            var page = new TabPage(title) { BackColor = Color.White };
+            var page = new TabPage(title) { BackColor = UI.Page };
             tabs.TabPages.Add(page);
             return page;
         }
@@ -100,11 +138,11 @@ namespace QuizApp
         {
             FillDashboard();
             FillQuizzes();
-            if (isAdmin) { FillQuizPicker(); FillQuestions(); FillUsers(); FillReports(); }
+            if (isTeacher) { FillQuizPicker(); FillQuestions(); FillUsers(); FillReports(); }
+            else FillSubjects();
             FillResults();
         }
 
-        // ================= DASHBOARD =================
         void BuildDashboard()
         {
             var page = AddTab("Dashboard");
@@ -119,23 +157,25 @@ namespace QuizApp
         void FillDashboard()
         {
             welcomeLabel.Text = "Welcome, " + Db.Me.Name;
-            int available = Db.All.Quizzes.Count(q => q.Available);
+            var relevantQuizzes = isTeacher ? Db.All.Quizzes : Db.All.Quizzes.Where(q => q.Available && Db.Me.Subjects != null
+                && Db.Me.Subjects.Any(subject => string.Equals(subject, q.Subject, StringComparison.OrdinalIgnoreCase))).ToList();
+            int available = isTeacher ? Db.All.Quizzes.Count(q => q.Available) : relevantQuizzes.Count;
+            int questionCount = relevantQuizzes.Sum(q => Db.QuestionsOf(q.Id).Count);
             var mine = Db.MyResults();
-            statsLabel.Text = "Total quizzes: " + Db.All.Quizzes.Count + "\n"
+            statsLabel.Text = "Total quizzes: " + relevantQuizzes.Count + "\n"
                             + "Available quizzes: " + available + "\n"
                             + "Completed quizzes: " + mine.Count + "\n"
-                            + "Total questions: " + Db.All.Questions.Count;
+                            + "Total questions: " + questionCount;
             recentBox.Items.Clear();
             foreach (Result r in mine.Take(8))
                 recentBox.Items.Add(r.Date.ToString("dd/MM HH:mm") + "   " + r.Student + " - " + r.QuizTitle + " - " + r.Percent + "%");
         }
 
-        // ================= QUIZZES =================
         void BuildQuizzes()
         {
             var page = AddTab("Quizzes");
-            quizList = UI.MakeList("Title", "Description", "Duration", "Questions", "Max score", "Available");
-            quizList.Columns[1].Width = 250;
+            quizList = UI.MakeList("Title", "Subject", "Description", "Duration", "Questions", "Max score", "Available");
+            quizList.Columns[2].Width = 220;
 
             var top = new Panel { Dock = DockStyle.Top, Height = 45 };
             quizSearch = UI.MakeText(75, 8, 200);
@@ -143,26 +183,28 @@ namespace QuizApp
             top.Controls.AddRange(new Control[] { UI.MakeLabel("Search:", 10, 11), quizSearch,
                 UI.MakeButton("Take selected quiz", 300, 6, 160, (s, e) => TakeQuiz()) });
 
-            page.Controls.Add(quizList);   // the list fills what is left
+            page.Controls.Add(quizList);
             page.Controls.Add(top);
 
-            if (!isAdmin) return;
-            var edit = new Panel { Dock = DockStyle.Bottom, Height = 120 };
+            if (!isTeacher) return;
+            var edit = new Panel { Dock = DockStyle.Bottom, Height = 155 };
             titleBox = UI.MakeText(80, 10, 200);
+            subjectBox = new ComboBox { Left = 380, Top = 10, Width = 220, DropDownStyle = ComboBoxStyle.DropDown };
+            subjectBox.Items.AddRange(Db.AvailableSubjects().Cast<object>().ToArray());
             descBox = UI.MakeText(80, 45, 330);
-            minutesBox = UI.MakeText(500, 10, 60);
-            availableBox = new CheckBox { Text = "Available to students", Left = 500, Top = 45, AutoSize = true, Checked = true };
-            edit.Controls.AddRange(new Control[] { UI.MakeLabel("Title", 10, 13), titleBox, UI.MakeLabel("Description", 10, 48), descBox,
-                UI.MakeLabel("Minutes", 430, 13), minutesBox, availableBox,
-                UI.MakeButton("Add", 10, 80, 90, (s, e) => SaveQuiz(true)), UI.MakeButton("Update", 110, 80, 90, (s, e) => SaveQuiz(false)),
-                UI.MakeButton("Delete", 210, 80, 90, (s, e) => DeleteQuiz()) });
+            minutesBox = UI.MakeText(500, 45, 60);
+            availableBox = new CheckBox { Text = "Available to students", Left = 620, Top = 12, AutoSize = true, Checked = true };
+            edit.Controls.AddRange(new Control[] { UI.MakeLabel("Title", 10, 13), titleBox, UI.MakeLabel("Subject", 310, 13), subjectBox,
+                UI.MakeLabel("Description", 10, 48), descBox, UI.MakeLabel("Minutes", 430, 48), minutesBox, availableBox,
+                UI.MakeButton("Add", 10, 95, 90, (s, e) => SaveQuiz(true)), UI.MakeButton("Update", 110, 95, 90, (s, e) => SaveQuiz(false)),
+                UI.MakeButton("Delete", 210, 95, 90, (s, e) => DeleteQuiz()) });
             page.Controls.Add(edit);
 
             quizList.SelectedIndexChanged += (s, e) =>
             {
                 Quiz q = UI.Selected<Quiz>(quizList);
                 if (q == null) return;
-                titleBox.Text = q.Title; descBox.Text = q.Description;
+                titleBox.Text = q.Title; subjectBox.Text = q.Subject; descBox.Text = q.Description;
                 minutesBox.Text = q.Minutes.ToString(); availableBox.Checked = q.Available;
             };
         }
@@ -172,9 +214,9 @@ namespace QuizApp
             quizList.Items.Clear();
             foreach (Quiz q in Db.All.Quizzes)
             {
-                if (!isAdmin && !q.Available) continue;                        // students only see available quizzes
+                if (!isTeacher && (!q.Available || Db.Me.Subjects == null || !Db.Me.Subjects.Contains(q.Subject))) continue;
                 if (q.Title.ToLower().IndexOf(quizSearch.Text.ToLower()) < 0) continue;
-                UI.AddRow(quizList, q, q.Title, q.Description, q.Minutes + " min", Db.QuestionsOf(q.Id).Count.ToString(),
+                UI.AddRow(quizList, q, q.Title, q.Subject, q.Description, q.Minutes + " min", Db.QuestionsOf(q.Id).Count.ToString(),
                           Db.MaxScore(q.Id).ToString(), q.Available ? "Yes" : "No");
             }
         }
@@ -185,9 +227,10 @@ namespace QuizApp
             if (q == null) { UI.Warn("Select a quiz first."); return; }
             int minutes;
             if (titleBox.Text.Trim() == "") { UI.Warn("Please enter a title."); return; }
+            if (subjectBox.Text.Trim() == "") { UI.Warn("Please enter a subject."); return; }
             if (!int.TryParse(minutesBox.Text, out minutes) || minutes < 1) { UI.Warn("Minutes must be a number like 10."); return; }
 
-            q.Title = titleBox.Text.Trim(); q.Description = descBox.Text.Trim();
+            q.Title = titleBox.Text.Trim(); q.Subject = subjectBox.Text.Trim(); q.Description = descBox.Text.Trim();
             q.Minutes = minutes; q.Available = availableBox.Checked;
             if (isNew) { q.Id = Db.NewId(); Db.All.Quizzes.Add(q); }
             Db.Save();
@@ -208,12 +251,46 @@ namespace QuizApp
             Quiz q = UI.Selected<Quiz>(quizList);
             if (q == null) { UI.Warn("Select a quiz first."); return; }
             if (!q.Available) { UI.Warn("This quiz is not available."); return; }
+            if (!isTeacher && (Db.Me.Subjects == null || !Db.Me.Subjects.Contains(q.Subject))) { UI.Warn("Select this subject in My Subjects before taking its quiz."); return; }
             if (Db.QuestionsOf(q.Id).Count == 0) { UI.Warn("This quiz has no questions yet."); return; }
             new QuizForm(q).ShowDialog(this);
             RefreshAll();
         }
 
-        // ================= QUESTIONS (admin) =================
+        void BuildSubjects()
+        {
+            var page = AddTab("My Subjects");
+            page.Controls.AddRange(new Control[] {
+                UI.MakeLabel("Choose the subjects you are studying. Only quizzes from selected subjects will appear.", 25, 25),
+                subjectList = new CheckedListBox { Left = 25, Top = 65, Width = 420, Height = 390, CheckOnClick = true },
+                UI.MakeButton("Save my subjects", 25, 470, 180, (s, e) => SaveSubjects())
+            });
+            subjectStatus = UI.MakeLabel("", 220, 480);
+            page.Controls.Add(subjectStatus);
+            FillSubjects();
+        }
+
+        void FillSubjects()
+        {
+            if (subjectList == null) return;
+            subjectList.Items.Clear();
+            List<string> selected = Db.Me.Subjects ?? new List<string>();
+            foreach (string subject in Db.AvailableSubjects())
+                subjectList.Items.Add(subject, selected.Any(s => string.Equals(s, subject, StringComparison.OrdinalIgnoreCase)));
+            if (subjectList.Items.Count == 0) subjectStatus.Text = "No subjects are available yet.";
+            else subjectStatus.Text = "";
+        }
+
+        void SaveSubjects()
+        {
+            List<string> selected = subjectList.CheckedItems.Cast<string>().ToList();
+            if (selected.Count == 0) { UI.Warn("Select at least one subject."); return; }
+            Db.Me.Subjects = selected;
+            Db.Save();
+            FillQuizzes();
+            subjectStatus.Text = "Subjects saved. Your quiz list is updated.";
+        }
+
         void BuildQuestions()
         {
             var page = AddTab("Questions");
@@ -236,7 +313,6 @@ namespace QuizApp
             edit.Controls.AddRange(new Control[] { UI.MakeLabel("Question", 10, 13), questionBox, UI.MakeLabel("Type", 10, 48), typeBox,
                 UI.MakeLabel("Marks", 270, 48), marksBox });
 
-            // the four answers (used by "Multiple choice" and "Multiple answers")
             for (int i = 0; i < 4; i++)
             {
                 int x = 80 + (i % 2) * 360, y = 85 + (i / 2) * 35;
@@ -267,7 +343,7 @@ namespace QuizApp
                 for (int i = 0; i < 4; i++)
                 {
                     optionBoxes[i].Text = i < q.Options.Count ? q.Options[i] : "";
-                    rightChecks[i].Checked = q.QuestionType == "Multiple answers" && q.Answer.ToUpper().Contains((char)('A' + i));
+                    rightChecks[i].Checked = q.QuestionType == "Multiple answers" && (q.Answer ?? "").ToUpper().Contains((char)('A' + i));
                 }
                 shortAnswerBox.Text = q.QuestionType == "Short answer" ? q.Answer : "";
                 if (q.QuestionType == "Multiple choice" || q.QuestionType == "True / False") correctBox.SelectedIndex = q.Correct;
@@ -275,7 +351,6 @@ namespace QuizApp
             UpdateEditor();
         }
 
-        // show only the controls that this type of question needs
         void UpdateEditor()
         {
             string type = typeBox.SelectedItem.ToString();
@@ -368,7 +443,6 @@ namespace QuizApp
             FillQuestions();
         }
 
-        // ================= RESULTS =================
         void BuildResults()
         {
             var page = AddTab("Results");
@@ -384,7 +458,6 @@ namespace QuizApp
                           r.CorrectCount.ToString(), r.WrongCount.ToString(), r.Date.ToString("dd/MM/yyyy HH:mm"));
         }
 
-        // ================= USERS (admin) =================
         void BuildUsers()
         {
             var page = AddTab("Users");
@@ -400,7 +473,7 @@ namespace QuizApp
             nameBox = UI.MakeText(90, 10, 200); usernameBox = UI.MakeText(90, 45, 200);
             emailBox = UI.MakeText(420, 10, 220); passwordBox = UI.MakeText(420, 45, 220);
             roleBox = new ComboBox { Left = 740, Top = 10, Width = 110, DropDownStyle = ComboBoxStyle.DropDownList };
-            roleBox.Items.AddRange(new object[] { "Student", "Admin" });
+            roleBox.Items.AddRange(new object[] { "Student", "Teacher" });
             roleBox.SelectedIndex = 0;
             edit.Controls.AddRange(new Control[] { UI.MakeLabel("Name", 10, 13), nameBox, UI.MakeLabel("Username", 10, 48), usernameBox,
                 UI.MakeLabel("Email", 330, 13), emailBox, UI.MakeLabel("Password", 330, 48), passwordBox, UI.MakeLabel("Role", 690, 13), roleBox,
@@ -455,7 +528,6 @@ namespace QuizApp
             FillUsers();
         }
 
-        // ================= REPORTS (admin) =================
         void BuildReports()
         {
             var page = AddTab("Reports");
@@ -466,7 +538,7 @@ namespace QuizApp
             var bottom = new Panel { Dock = DockStyle.Bottom, Height = 45 };
             bottom.Controls.Add(UI.MakeButton("Export results to CSV", 5, 8, 200, (s, e) => ExportCsv()));
 
-            page.Controls.Add(studentList);   // fills the middle
+            page.Controls.Add(studentList);
             page.Controls.Add(reportList);
             page.Controls.Add(bottom);
         }
@@ -497,7 +569,6 @@ namespace QuizApp
             UI.Info("Saved: " + dialog.FileName);
         }
 
-        // ================= SETTINGS =================
         void BuildSettings()
         {
             var page = AddTab("Settings");

@@ -15,30 +15,35 @@ namespace QuizApp
         public LoginForm()
         {
             Text = "Quiz Management System - Login";
-            ClientSize = new Size(380, 380);
+            ClientSize = new Size(430, 455);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
+            BackColor = UI.Page;
             Font = new Font("Segoe UI", 10);
 
             var title = UI.MakeLabel("Quiz Management System", 40, 25);
-            title.Font = new Font("Segoe UI", 16, FontStyle.Bold);
-            title.ForeColor = UI.Blue;
+            title.Font = new Font("Segoe UI", 17, FontStyle.Bold);
+            title.ForeColor = UI.Navy;
+            var subtitle = UI.MakeLabel("Sign in to continue to your quizzes", 42, 58);
+            subtitle.ForeColor = UI.Muted;
 
-            userBox = UI.MakeText(40, 95, 300);
-            passBox = UI.MakeText(40, 150, 300);
+            userBox = UI.MakeText(40, 120, 350);
+            passBox = UI.MakeText(40, 183, 350);
             passBox.UseSystemPasswordChar = true;
-            rememberBox = new CheckBox { Text = "Remember me", Left = 40, Top = 185, AutoSize = true };
-            errorLabel = UI.MakeLabel("", 40, 215);
+            rememberBox = new CheckBox { Text = "Remember me", Left = 40, Top = 222, AutoSize = true, ForeColor = UI.Muted };
+            errorLabel = UI.MakeLabel("", 40, 255);
             errorLabel.ForeColor = Color.Firebrick;
 
-            var loginButton = UI.MakeButton("Login", 40, 250, 300, (s, e) => DoLogin());
-            var registerButton = UI.MakeButton("Create new account", 40, 290, 300, (s, e) => new RegisterForm().ShowDialog());
-            AcceptButton = loginButton;   // Enter key = login
+            var forgotPasswordButton = UI.MakeButton("Forgot password?", 250, 216, 140, (s, e) => ShowPasswordRecoveryHelp());
+            var loginButton = UI.MakeButton("Sign in", 40, 282, 350, (s, e) => DoLogin());
+            var registerButton = UI.MakeButton("Create a new account", 40, 324, 350, (s, e) => new RegisterForm().ShowDialog());
+            AcceptButton = loginButton;
 
-            Controls.AddRange(new Control[] { title, UI.MakeLabel("Username or email", 40, 70), userBox,
-                UI.MakeLabel("Password", 40, 125), passBox, rememberBox, errorLabel, loginButton, registerButton,
-                UI.MakeLabel("Demo: admin / Admin@123    student / Student@123", 40, 335) });
+            Controls.AddRange(new Control[] { title, subtitle, UI.MakeLabel("Username or email", 40, 95), userBox,
+                UI.MakeLabel("Password", 40, 158), passBox, rememberBox, forgotPasswordButton, errorLabel, loginButton, registerButton,
+                UI.MakeLabel("Teacher: teacher@quiz.com / Teacher@123", 40, 375),
+                UI.MakeLabel("Student: student / Student@123", 40, 397) });
 
             if (File.Exists(rememberFile)) { userBox.Text = File.ReadAllText(rememberFile); rememberBox.Checked = true; }
         }
@@ -62,6 +67,11 @@ namespace QuizApp
 
             Db.Me = user;
             DialogResult = DialogResult.OK;
+        }
+
+        void ShowPasswordRecoveryHelp()
+        {
+            UI.Info("This app cannot send password reset emails. Please contact a teacher to reset your password from the Users tab.");
         }
     }
 

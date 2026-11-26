@@ -1,12 +1,11 @@
 using System;
+using System.ComponentModel;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
 namespace QuizApp
 {
-    // The window where the student answers a quiz.
-    // Every answer is kept as text: "2" (option index), "AC" (letters) or what the student typed.
     public class QuizForm : Form
     {
         Quiz quiz;
@@ -26,6 +25,12 @@ namespace QuizApp
 
         public QuizForm(Quiz quiz)
         {
+            if (LicenseManager.UsageMode == LicenseUsageMode.Designtime)
+            {
+                BuildDesignerPreview();
+                return;
+            }
+
             this.quiz = quiz;
             questions = Db.QuestionsOf(quiz.Id);
             answers = new string[questions.Count];
@@ -82,6 +87,37 @@ namespace QuizApp
             timer.Start();
         }
 
+        void BuildDesignerPreview()
+        {
+            Text = "Quiz Preview";
+            ClientSize = new Size(640, 430);
+            StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            Font = new Font("Segoe UI", 10);
+
+            numberLabel = UI.MakeLabel("Question 1 of 10   (2 marks)", 25, 20);
+            timeLabel = UI.MakeLabel("10:00", 500, 20);
+            timeLabel.Font = new Font("Segoe UI", 12, FontStyle.Bold);
+            timeLabel.ForeColor = Color.Firebrick;
+            textLabel = new Label { Left = 25, Top = 55, Width = 590, Height = 60, Text = "Which option is the correct answer?", Font = new Font("Segoe UI", 13, FontStyle.Bold) };
+            hintLabel = UI.MakeLabel("Choose one answer.", 25, 120);
+            hintLabel.ForeColor = Color.Gray;
+            Controls.AddRange(new Control[] { numberLabel, timeLabel, textLabel, hintLabel });
+
+            for (int i = 0; i < 4; i++)
+            {
+                radios[i] = new RadioButton { Left = 40, Top = 145 + i * 42, Width = 560, Height = 32, Text = ((char)('A' + i)) + ".  Answer option" };
+                Controls.Add(radios[i]);
+            }
+
+            Controls.AddRange(new Control[] {
+                UI.MakeButton("Previous", 25, 380, 100, null),
+                UI.MakeButton("Next", 135, 380, 100, null),
+                UI.MakeButton("Submit quiz", 485, 380, 130, null)
+            });
+        }
+
         void ShowTime()
         {
             timeLabel.Text = (secondsLeft / 60).ToString("00") + ":" + (secondsLeft % 60).ToString("00");
@@ -90,7 +126,7 @@ namespace QuizApp
         void ShowQuestion(int index)
         {
             current = index;
-            loading = true;                       // so changing the controls here is not saved as an answer
+            loading = true;
             Question q = questions[index];
             string type = q.QuestionType;
             string saved = answers[index] ?? "";
@@ -119,7 +155,6 @@ namespace QuizApp
             loading = false;
         }
 
-        // called when the student picks, ticks or types something
         void OptionChanged(object sender, EventArgs e)
         {
             if (loading) return;
@@ -136,6 +171,21 @@ namespace QuizApp
                 var radio = sender as RadioButton;
                 if (radio != null && radio.Checked) answers[current] = radio.Tag.ToString();
             }
+        }
+
+        private void InitializeComponent()
+        {
+            SuspendLayout();
+            // 
+            // QuizForm
+            // 
+            AllowDrop = true;
+            ClientSize = new Size(711, 514);
+            Enabled = false;
+            Name = "QuizForm";
+            Load += QuizForm_Load;
+            ResumeLayout(false);
+
         }
 
         void Submit(bool timeIsUp)
@@ -163,6 +213,11 @@ namespace QuizApp
             UI.Info((timeIsUp ? "Time is up!\n\n" : "") + "Your score: " + result.Score + " / " + result.Total + " (" + result.Percent + "%)\n"
                     + (result.Passed ? "You passed." : "You did not pass.") + "\nCorrect: " + result.CorrectCount + "   Wrong: " + result.WrongCount);
             Close();
+        }
+
+        private void QuizForm_Load(object sender, EventArgs e)
+        {
+
         }
     }
 }

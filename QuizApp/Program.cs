@@ -11,7 +11,6 @@ namespace QuizApp
             Application.EnableVisualStyles();
             Db.Start();
 
-            // login -> main window -> (logout) -> login again
             while (true)
             {
                 var login = new LoginForm();
